@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 import jwt
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pwdlib import PasswordHash
 from sqlmodel import Session, select
 
@@ -17,6 +18,8 @@ SECRET_KEY = "change-this-later"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
+security = HTTPBearer()
+
 def create_access_token(user_id: int):
   expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
   
@@ -30,6 +33,7 @@ def create_access_token(user_id: int):
     SECRET_KEY,
     algorithm=ALGORITHM
   )
+
 
 @router.post("/register")
 def register(user_data: UserCreate, session: Session = Depends(get_session)):
@@ -58,6 +62,7 @@ def register(user_data: UserCreate, session: Session = Depends(get_session)):
     "role": user.role
   }
 
+
 @router.post("/login")
 def login(user_data: UserLogin, session: Session = Depends(get_session)):
   
@@ -71,4 +76,38 @@ def login(user_data: UserLogin, session: Session = Depends(get_session)):
   return {
     "access_token": access_token,
     "token_type": "bearer"
+  }
+
+  
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), session: Session = Depends(get_session)):
+  
+  token = credentials.credentials
+  
+  try:
+    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    user_id: str = payload.get("sub")
+    
+    if user_id is None:
+      raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user = session.exec(select(User).where(User.id == int(user_id))).first()
+    
+    if user is None:
+      raise HTTPException(status_code=401, detail="User not found")
+    
+    return user
+  
+  except jwt.ExpiredSignatureError:
+    raise HTTPException(status_code=401, detail="Token has expired")
+  
+  except jwt.InvalidTokenError:
+    raise HTTPException(status_code=401, detail="Invalid token")
+  
+@router.get("/me")
+def get_me(current_user: User = Depends(get_current_user)):
+  return {
+    "id": current_user.id,
+    "name": current_user.name,
+    "email": current_user.email,
+    "role": current_user.role
   }

@@ -3,7 +3,7 @@ from sqlmodel import SQLModel
 
 from .database import engine
 from . import models
-from .routers import auth
+from .routers import auth, beneficiaries
 
 app = FastAPI()
 
@@ -13,6 +13,7 @@ def create_db_and_tables():
 create_db_and_tables()
 
 app.include_router(auth.router)
+app.include_router(beneficiaries.router)
   
 @app.get("/")
 def root():
